@@ -1,0 +1,11 @@
+services:
+  bouldergen:
+    image: ghcr.io/andrepcg/bouldergen:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - bouldergen-data:/data
+
+volumes:
+  bouldergen-data:
