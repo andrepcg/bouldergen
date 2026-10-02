@@ -327,7 +327,10 @@ function drawStick(layer, b, step, holds) {
   bone(joints.LF, joints.RF, 'body');
   for (const limb of ['LH', 'RH', 'LF', 'RF']) {
     const hand = limb[1] === 'H', root = joints[limb], hold = holds[at[limb]];
-    const end = hold ? [hold.x, hold.y] : [root[0], root[1] + leg * .9]; // campus: no foot holds, legs hang
+    const campus = !b.start.LF;
+    const end = hold ? [hold.x, hold.y]
+      : campus ? [root[0], root[1] + leg * .9] // campus: legs hang
+        : [root[0] + (limb === 'LF' ? -1 : 1) * leg * .55, root[1] + leg * .7]; // flagging: leg out to the side
     const l = (hand ? arm : leg) / 2;
     const mid = joint(root, end, l, l, hand
       ? (a, c) => (a[1] > c[1] ? a : c) // elbows point down
@@ -765,11 +768,13 @@ function viewGenerate() {
     const go = i => { step = Math.max(0, Math.min(n, i)); render(); };
     const r = roles(), nums = Object.fromEntries((gen.problem.holds || []).filter(h => h.n).map(h => [h.id, h.n]));
     const where = m && (r[m.hold] === 20 ? 'the finish' : nums[m.hold] ? `hold ${nums[m.hold]}` : m.limb[1] === 'F' ? 'a foothold' : 'a start hold');
+    const what = m && (m.hold ? `${LIMB_NAMES[m.limb]} to ${where}` : `${LIMB_NAMES[m.limb]} off, flagging`);
+    const load = b.poses[step]?.load;
     return el('div', { class: 'stepper' },
       el('button', { class: 'iconbtn', 'aria-label': 'Previous move', disabled: step === 0, onclick: () => { stop(); go(step - 1); } }, icon('back')),
       el('div', { class: 'step-label' },
         el('strong', { text: step ? `Move ${step} of ${n}` : 'Start position' }),
-        el('span', { class: 'muted', text: step ? `${LIMB_NAMES[m.limb]} to ${where}` : 'Hands on the start, feet low' })),
+        el('span', { class: 'muted', text: `${step ? what : 'Hands on the start, feet low'}${load != null ? ` · hands ${Math.round(load * 100)}%` : ''}` })),
       el('button', { class: 'iconbtn', 'aria-label': 'Next move', disabled: step === n, onclick: () => { stop(); go(step + 1); } }, icon('next')),
       el('button', {
         class: 'iconbtn play', 'aria-label': timer ? 'Pause' : 'Play beta', onclick: () => {

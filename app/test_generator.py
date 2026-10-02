@@ -1,4 +1,5 @@
 """Self-check for the generator: python -m app.test_generator"""
+import math
 import random
 import time
 
@@ -70,16 +71,24 @@ def check_kinematic(holds, wall):
             continue
         made += 1
         body = beta.Body(s['climber_height'] / 100)
+        theta, strength = math.radians(wall['ref_angle'] - 90), .7 + s['difficulty']
         b = r['beta']
         state = [idx[b['start'][k]] for k in beta.LIMBS]
-        assert beta.legal(body, tuple(state), hs, False) is not None, (seed, 'start')
+
+        def check(tag):
+            com = beta.legal(body, tuple(state), hs, False)
+            assert com is not None, (seed, tag)
+            assert beta.effort(state, hs, com, beta.feet_of(state, hs), theta, strength) <= beta.MAX_EFFORT, (seed, tag, 'too heavy')
+        check('start')
         for m in b['moves']:
-            state[beta.LIMBS.index(m['limb'])] = idx[m['hold']]
-            assert beta.legal(body, tuple(state), hs, False) is not None, (seed, m)
+            state[beta.LIMBS.index(m['limb'])] = idx[m['hold']] if m['hold'] else beta.FREE  # None = flagging
+            check(m)
         assert state[0] == state[1] and {'id': hs[state[0]].id, 'role': 20} in r['holds'], (seed, 'ends matched on the finish')
         roles = {h['id']: h['role'] for h in r['holds']}
         assert any(v == 10 for v in roles.values())
-    assert made >= 25, made
+    # some synthetic seeds fail on purpose: set feet on a 30° wall of random, often hard holds
+    # can exceed what the static load check allows a weak climber
+    assert made >= 20, made
 
 
 if __name__ == '__main__':

@@ -92,13 +92,30 @@ You pick the engine with `settings.engine` (`'boulderbot'` is the default, or `'
 - feet stay below hands
 - the hands aren't compressed too close to the feet
 - no crossed feet
-- the hip can reach both feet and the shoulders both hands (`pose()` runs a 3×3 hip search)
-- no barn door: the centre of mass sits within the contacts sideways
+- `pose()` runs a 3×3 hip search. The hip must:
+  - be within leg reach of every foot
+  - let the shoulders reach both hands
+  - keep each limb in its zone (Naderi 2019): hands at or above the hip, underclings a bit lower; feet no higher than the hip and not swung across the body
+- no barn door: the centre of mass sits within the contacts sideways. A flagging leg counts as a counterweight on its side.
 - every hand pulls in its hold's direction
+
+**Flagging:** one foot may be `FREE` (−1). In the beta it appears as a move with `hold: null`. Moving a hand while flagging costs `flag_cost`, which is cheaper on harder problems.
+
+**Static balance (`hand_share`, `effort`), a heuristic version of Bretl's statics:**
+- The hands carry about 25% of body weight on a vertical wall, about 55% at 30° and about 85% on a roof, plus more when flagging or leaning sideways.
+- Each hand hold has a capacity from its type (`TYPE_CAP`) and difficulty. Slopers lose capacity as the wall steepens.
+- Climber strength is `0.7 + d`.
+- `effort` is the worst hand's load divided by capacity × strength:
+  - above 1 costs steeply (`Search.strain`)
+  - above `MAX_EFFORT` the pose is rejected
+
+  This is what makes wall angle and hold type matter: steeper walls pull hard problems onto better holds.
+- Each pose in the beta carries `load` and `effort`.
 
 **`Search.ok()` adds the per-problem comfort limits:**
 - maximum hand gap
 - maximum sideways lean between the hands' midpoint and the feet's midpoint
+- the static load check above
 
 **Per-move limits:** a hard `max_move` and a preferred `pref` hand move, both scaling with difficulty and span. Stretching past `pref` costs extra.
 
