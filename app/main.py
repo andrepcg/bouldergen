@@ -10,7 +10,7 @@ import cv2
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 
-from app import detect, generator
+from app import beta, detect, generator
 
 DATA = Path(os.environ.get('DATA_DIR', 'data'))
 IMAGES = DATA / 'images'
@@ -136,7 +136,8 @@ def run_detect(wall, params, rect):
 def generate(wall_id: str, settings: dict = Body(default={})):
     wall = get_wall(wall_id)
     try:
-        return generator.generate(wall['holds'], wall, settings)
+        engine = beta if settings.get('engine') == 'kinematic' else generator
+        return engine.generate(wall['holds'], wall, settings)
     except ValueError as e:
         raise HTTPException(422, str(e))
 
@@ -155,7 +156,9 @@ def save_problem(wall_id: str, body: dict = Body(...)):
     problem = {'id': uuid.uuid4().hex[:10], 'wall_id': wall_id, 'created': time.time(),
                'name': str(body.get('name') or 'Untitled')[:80], 'grade': body.get('grade'),
                'grade_index': body.get('grade_index'), 'angle': body.get('angle'),
-               'holds': [{'id': str(h['id']), 'role': int(h['role'])} for h in body['holds']]}
+               'holds': [{'id': str(h['id']), 'role': int(h['role']), **({'n': int(h['n'])} if h.get('n') else {})}
+                         for h in body['holds']],
+               'engine': body.get('engine', 'boulderbot'), 'beta': body.get('beta')}
     db.execute('INSERT INTO problems (id, wall_id, data) VALUES (?, ?, ?)',
                (problem['id'], wall_id, json.dumps(problem)))
     return problem

@@ -2,7 +2,8 @@
 import random
 import time
 
-from app.generator import generate, run_net, dist, GEN_HD
+from app import beta
+from app.generator import generate, run_net
 
 
 def synthetic_wall(seed=1):
@@ -42,14 +43,43 @@ def main():
         ids = [h['id'] for h in r['holds']]
         assert len(ids) == len(set(ids)) and all(i in by_id for i in ids), r
         assert 10 in roles and 20 in roles, roles
-        top_start = min(by_id[h['id']]['y'] for h in r['holds'] if h['role'] == 10)
+        # finish above the lowest start (image y grows downward). Not the highest: BoulderBot's
+        # optional second start can occasionally land above the finish, as in the original.
+        low_start = max(by_id[h['id']]['y'] for h in r['holds'] if h['role'] == 10)
         low_finish = max(by_id[h['id']]['y'] for h in r['holds'] if h['role'] == 20)
-        assert low_finish < top_start, (seed, r)  # finish above start (image y grows downward)
+        assert low_finish < low_start, (seed, r)
     circ = generate(holds, wall, {'difficulty': .4, 'circuit': True}, seed=3)
     assert any(h['role'] == 30 for h in circ['holds'])
     trav = generate(holds, wall, {'difficulty': .4, 'traverse': True, 'length': .8}, seed=4)
     assert trav['holds']
+    check_kinematic(holds, wall)
     print(f'ok: {n} problems in {time.monotonic() - t0:.1f}s, e.g. {r["grade"]}, {len(r["holds"])} holds, penalty {r["penalty"]}')
+
+
+def check_kinematic(holds, wall):
+    """Replay each kinematic beta: every intermediate body position must be legal for that climber."""
+    hs = beta.to_holds(holds, wall)
+    idx = {h.id: h.i for h in hs}
+    made = 0
+    for seed in range(30):
+        s = {'engine': 'kinematic', 'difficulty': seed % 5 / 5, 'length': seed % 3 / 2, 'feet': ['follow', 'set'][seed % 2],
+             'climber_height': 160 + seed % 4 * 10}
+        try:
+            r = beta.generate(holds, wall, s, seed=seed)
+        except ValueError:
+            continue
+        made += 1
+        body = beta.Body(s['climber_height'] / 100)
+        b = r['beta']
+        state = [idx[b['start'][k]] for k in beta.LIMBS]
+        assert beta.legal(body, tuple(state), hs, False) is not None, (seed, 'start')
+        for m in b['moves']:
+            state[beta.LIMBS.index(m['limb'])] = idx[m['hold']]
+            assert beta.legal(body, tuple(state), hs, False) is not None, (seed, m)
+        assert state[0] == state[1] and {'id': hs[state[0]].id, 'role': 20} in r['holds'], (seed, 'ends matched on the finish')
+        roles = {h['id']: h['role'] for h in r['holds']}
+        assert any(v == 10 for v in roles.values())
+    assert made >= 25, made
 
 
 if __name__ == '__main__':

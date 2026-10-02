@@ -21,9 +21,17 @@ const FEET = [
   ['none', 'Campus', 'No feet'],
 ];
 const STYLES = [['boulder', 'Boulder'], ['traverse', 'Traverse'], ['circuit', 'Circuit']];
+const ENGINES = [
+  ['boulderbot', 'BoulderBot', 'The original app’s algorithm. Loose and creative, sometimes reachy.'],
+  ['kinematic', 'Kinematic', 'Simulates a climber of your size: every move is reachable, numbers show the hand order.'],
+];
 
 const ICONS = {
   back: '<path d="m15 18-6-6 6-6"/>',
+  next: '<path d="m9 18 6-6-6-6"/>',
+  play: '<path d="M7 4v16l13-8z"/>',
+  pause: '<path d="M8 4v16M16 4v16"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   generate: '<path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   holds: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>',
@@ -271,6 +279,66 @@ function drawProblem(layer, problem, holds, extra = {}) {
       el('circle', { class: 'ring', cx: h.x, cy: h.y, r: rad(h), stroke: c }));
     if (extra.pinned?.[ph.id]) layer.append(el('circle', { class: 'pin-ring', cx: h.x, cy: h.y, r: rad(h) + 22, stroke: c }));
   }
+  for (const ph of list) {
+    if (!ph.n || !extra.numbers) continue;
+    const h = holds[ph.id], o = rad(h) * .72;
+    layer.append(el('g', { class: 'ring-num' }, el('circle', { cx: h.x + o, cy: h.y - o, r: 52 }),
+      el('text', { x: h.x + o, y: h.y - o + 24, text: ph.n })));
+  }
+}
+
+// ---------------------------------------------------------------- beta stick figure
+
+const LIMB_NAMES = { LH: 'Left hand', RH: 'Right hand', LF: 'Left foot', RF: 'Right foot' };
+
+// limb -> hold id after the first `step` moves
+function limbsAt(b, step) {
+  const pos = { ...b.start };
+  for (const m of b.moves.slice(0, step)) pos[m.limb] = m.hold;
+  return pos;
+}
+
+// two-segment limb from a to c (lengths l1, l2): returns the middle joint, bending towards `pick`.
+// `flat` < 1 foreshortens the bend: knees and elbows mostly bend towards the wall, out of the picture plane.
+function joint(a, c, l1, l2, pick, flat = 1) {
+  const dx = c[0] - a[0], dy = c[1] - a[1], d = Math.hypot(dx, dy) || 1;
+  const dd = Math.min(d, l1 + l2 - 1), along = (l1 * l1 - l2 * l2 + dd * dd) / (2 * dd);
+  const h = flat * Math.sqrt(Math.max(0, l1 * l1 - along * along)), ux = dx / d, uy = dy / d;
+  const bx = a[0] + ux * along, by = a[1] + uy * along;
+  return pick([bx - uy * h, by + ux * h], [bx + uy * h, by - ux * h]);
+}
+
+function drawStick(layer, b, step, holds) {
+  const p = b.poses?.[step];
+  if (!p) return;
+  const { arm, leg, torso, shoulder, hip } = b.body;
+  const at = limbsAt(b, step), moved = step ? b.moves[step - 1].limb : null;
+  const H = p.hip, S = p.shoulder;
+  const ux = (S[0] - H[0]) / torso, uy = (S[1] - H[1]) / torso;
+  let px = -uy, py = ux;
+  if (px > 0) { px = -px; py = -py; } // (px, py) points to the climber's left (image left: they face the wall)
+  const side = (c, w, k) => [c[0] + k * px * w, c[1] + k * py * w];
+  const joints = { LH: side(S, shoulder, 1), RH: side(S, shoulder, -1), LF: side(H, hip, 1), RF: side(H, hip, -1) };
+  const g = el('g', { class: 'stick' });
+  const seg = (a, c, cls) => g.append(el('line', { x1: a[0], y1: a[1], x2: c[0], y2: c[1], class: cls }));
+  const bone = (a, c, cls) => { seg(a, c, 'halo'); seg(a, c, cls); };
+  bone(H, S, 'body');
+  bone(joints.LH, joints.RH, 'body');
+  bone(joints.LF, joints.RF, 'body');
+  for (const limb of ['LH', 'RH', 'LF', 'RF']) {
+    const hand = limb[1] === 'H', root = joints[limb], hold = holds[at[limb]];
+    const end = hold ? [hold.x, hold.y] : [root[0], root[1] + leg * .9]; // campus: no foot holds, legs hang
+    const l = (hand ? arm : leg) / 2;
+    const mid = joint(root, end, l, l, hand
+      ? (a, c) => (a[1] > c[1] ? a : c) // elbows point down
+      : (a, c) => ((a[0] - H[0]) * (limb === 'LF' ? -1 : 1) > (c[0] - H[0]) * (limb === 'LF' ? -1 : 1) ? a : c), // knees out
+      hand ? .5 : .35);
+    const cls = limb === moved ? 'limb moved' : 'limb';
+    bone(root, mid, cls); bone(mid, end, cls);
+    g.append(el('circle', { cx: end[0], cy: end[1], r: 26, class: `contact${limb === moved ? ' moved' : ''}` }));
+  }
+  g.append(el('circle', { cx: S[0] + ux * torso * .36, cy: S[1] + uy * torso * .36, r: torso * .2, class: 'head' }));
+  layer.append(g);
 }
 
 // ---------------------------------------------------------------- router + shell
@@ -322,7 +390,7 @@ async function viewHome() {
     const w = await api('POST', '/api/walls', fd);
     location.hash = `#/wall/${w.id}/setup`;
   });
-  add(app, 
+  add(app,
     el('section', { class: 'hero' }, el('h2', { text: walls.length ? 'Your walls' : 'Set up your wall' }),
       el('p', { class: 'muted', text: walls.length ? 'Pick a wall to generate problems.' : 'Upload a photo of your wall. Shoot it straight on from low down, with the whole panel and kicker in frame.' })),
     el('div', { class: 'walls' },
@@ -404,7 +472,7 @@ function viewSetup() {
       }));
     });
 
-  add(app, 
+  add(app,
     el('section', { class: 'card' }, el('div', { class: 'step' }, el('b', { text: '1' }), el('div', {},
       el('h3', { text: 'Mark the corners' }),
       el('p', { class: 'muted' }, 'Drag the ', el('em', { class: 'c-main', text: 'green' }), ' dots onto the main panel corners and the ',
@@ -489,7 +557,7 @@ function viewHolds() {
   }
 
   function drawTools() {
-    put(tools, 
+    put(tools,
       el('button', { class: `chip-btn${armed === 'add' ? ' on' : ''}`, onclick: () => { armed = armed === 'add' ? null : 'add'; render(); } }, icon('plus'), 'Add hold'),
       el('button', { class: `chip-btn${armed === 'area' ? ' on' : ''}`, onclick: () => { armed = armed === 'area' ? null : 'area'; render(); } }, icon('area'), 'Select area'));
     if (armed) tools.append(el('div', { class: 'armed-hint', text: armed === 'add' ? 'Tap where the missing hold is' : 'Drag a box around holds' }));
@@ -507,7 +575,7 @@ function viewHolds() {
   function drawPanel() {
     if (!selected.size) {
       const holds = wall.holds.filter(usable);
-      put(panel, 
+      put(panel,
         el('div', { class: 'panel-head' }, el('h3', { text: `${holds.length} holds` }),
           el('span', { class: 'muted', text: `${holds.filter(h => h.difficulty >= 192).length} feet · ${wall.holds.length - holds.length} volumes` })),
         el('p', { class: 'muted', text: 'Tap a hold to edit it. Tap more holds, or use Select area, to edit several at once.' }),
@@ -566,9 +634,12 @@ function viewGenerate() {
   app.className = 'stage';
   const holds = byId();
   const key = `settings:${wall.id}`;
-  const s = Object.assign({ difficulty: .3, length: .5, span: .5, feet: 'follow', style: 'boulder', types: [], angle: wall.ref_angle }, store(key) || {});
+  const s = Object.assign({ difficulty: .3, length: .5, span: .5, feet: 'follow', style: 'boulder', types: [], angle: wall.ref_angle,
+    engine: 'boulderbot', climber_height: 175, ape_index: 0 }, store(key) || {});
   s.angle = Math.min(Math.max(s.angle, wall.min_angle), wall.max_angle);
-  let picking = null, showOptions = false, busy = false;
+  let picking = null, showOptions = false, busy = false, step = 0, timer = null;
+  let showBeta = false; // the beta is a spoiler: hidden until asked for
+  const stop = () => { clearInterval(timer); timer = null; };
   if (gen.problem) gen.problem.holds = gen.problem.holds.filter(h => holds[h.id]);
 
   const viewer = createViewer(wall.width, wallH(), wall.rect, {
@@ -586,7 +657,8 @@ function viewGenerate() {
   function drawWall() {
     viewer.layer.replaceChildren();
     for (const h of wall.holds) if (usable(h)) viewer.layer.append(el('g', { 'data-id': h.id, class: 'ghold' }, holdShape(h, {})));
-    drawProblem(viewer.layer, gen.problem, holds, { pinned: gen.forced });
+    drawProblem(viewer.layer, gen.problem, holds, { pinned: gen.forced, numbers: showBeta });
+    if (showBeta && gen.problem?.beta?.poses) drawStick(viewer.layer, gen.problem.beta, step, holds);
     if (picking) {
       const h = holds[picking];
       viewer.layer.append(el('circle', { class: 'pick-ring', cx: h.x, cy: h.y, r: Math.max(h.r || 40, 34) + 50 }));
@@ -594,7 +666,8 @@ function viewGenerate() {
     const p = gen.problem;
     put(badge, el('strong', { text: p?.grade || gradeLabel(s.difficulty, s.angle) }),
       wall.max_angle > wall.min_angle && el('span', { text: `${(p?.angle ?? s.angle) - 90}°` }),
-      p && el('span', { text: `${p.holds.length} holds` }));
+      p && el('span', { text: `${p.holds.length} holds` }),
+      el('span', { text: (ENGINES.find(e => e[0] === (p?.engine || s.engine)) || ENGINES[0])[1] }));
     badge.classList.toggle('ghost', !p);
   }
 
@@ -612,6 +685,8 @@ function viewGenerate() {
       const body = { ...s, circuit: s.style === 'circuit', traverse: s.style === 'traverse', forced: gen.forced };
       gen.problem = await api('POST', `/api/walls/${wall.id}/generate`, body);
       gen.problem.angle = s.angle;
+      gen.problem.engine = s.engine;
+      stop(); step = 0; showBeta = false;
     } finally { busy = false; render(); }
   }
 
@@ -636,7 +711,7 @@ function viewGenerate() {
   function drawPanel() {
     if (picking) {
       const cur = roles()[picking];
-      put(panel, 
+      put(panel,
         el('div', { class: 'panel-head' }, el('h3', { text: 'Use this hold as' }),
           el('button', { class: 'iconbtn', 'aria-label': 'Close', onclick: () => { picking = null; render(); } }, icon('x'))),
         el('div', { class: 'roles' }, [10, 40, 50, 20].map(r => el('button', {
@@ -647,12 +722,25 @@ function viewGenerate() {
     }
     const pins = Object.keys(gen.forced).length;
     const feet = FEET.find(f => f[0] === s.feet) || FEET[0];
-    put(panel, 
+    const engine = ENGINES.find(e => e[0] === s.engine) || ENGINES[0];
+    const kinematic = s.engine === 'kinematic';
+    if (kinematic && s.style === 'circuit') s.style = 'boulder';
+    const num = (k, label, min, max) => el('label', { class: 'field' }, el('span', { text: label }),
+      el('div', { class: 'input-unit' }, el('input', {
+        type: 'number', inputmode: 'numeric', min, max, value: s[k],
+        onchange: e => { s[k] = Number(e.target.value) || s[k]; store(key, s); },
+      }), el('i', { text: 'cm' })));
+    put(panel,
       slider('difficulty', 'Difficulty', 0, 1, .01, v => gradeLabel(v, s.angle)),
       showOptions && el('div', { class: 'options stack' },
-        el('div', { class: 'grid2' }, slider('length', 'Length', 0, 1, .01, words), slider('span', 'Reach between holds', 0, 1, .01, words)),
+        el('div', { class: 'group' }, el('label', { text: 'Engine' }),
+          seg(ENGINES.map(e => [e[0], e[1]]), s.engine, v => { s.engine = v; store(key, s); drawWall(); drawPanel(); }),
+          el('p', { class: 'hint', text: engine[2] })),
+        kinematic && el('div', { class: 'grid2 tight' }, num('climber_height', 'Your height', 120, 220), num('ape_index', 'Ape index (span − height)', -30, 30)),
+        el('div', { class: 'grid2' }, slider('length', 'Length', 0, 1, .01, words), slider('span', kinematic ? 'Move size' : 'Reach between holds', 0, 1, .01, words)),
         wall.max_angle > wall.min_angle && slider('angle', 'Wall angle', wall.min_angle, wall.max_angle, 5, v => `${v - 90}°`),
-        el('div', { class: 'group' }, el('label', { text: 'Style' }), seg(STYLES, s.style, v => { s.style = v; store(key, s); drawPanel(); })),
+        el('div', { class: 'group' }, el('label', { text: 'Style' }),
+          seg(STYLES.filter(st => !kinematic || st[0] !== 'circuit'), s.style, v => { s.style = v; store(key, s); drawPanel(); })),
         el('div', { class: 'group' }, el('label', { text: 'Feet' }), seg(FEET.map(f => [f[0], f[1]]), s.feet, v => { s.feet = v; store(key, s); drawPanel(); }),
           el('p', { class: 'hint', text: feet[2] })),
         el('div', { class: 'group' }, el('label', { text: 'Only these hold types (optional)' }),
@@ -661,6 +749,8 @@ function viewGenerate() {
             onclick: () => { s.types = s.types.includes(v) ? s.types.filter(x => x !== v) : [...s.types, v]; store(key, s); drawPanel(); },
           })))),
         el('div', { class: 'legend' }, Object.values(ROLES).map(r => el('span', { style: `--c:${r.color}`, text: r.name })))),
+      gen.problem?.beta?.poses && (showBeta ? stepper(gen.problem.beta)
+        : el('button', { class: 'beta-toggle', onclick: () => { showBeta = true; render(); } }, icon('eye'), 'Show beta')),
       pins > 0 && el('div', { class: 'pins' }, icon('pin'), `${pins} hold${pins > 1 ? 's' : ''} pinned`,
         el('button', { class: 'link', text: 'Clear', onclick: () => { gen.forced = {}; render(); } })),
       el('div', { class: 'actions' },
@@ -668,6 +758,31 @@ function viewGenerate() {
           onclick: () => { showOptions = !showOptions; drawPanel(); } }, icon('sliders')),
         el('button', { class: 'btn primary grow', disabled: busy, onclick: generate }, icon('generate'), busy ? 'Generating…' : gen.problem ? 'Generate another' : 'Generate'),
         el('button', { class: 'iconbtn big', 'aria-label': 'Save problem', disabled: !gen.problem?.holds.length, onclick: saveProblem }, icon('bookmark'))));
+  }
+
+  function stepper(b) {
+    const n = b.moves.length, m = b.moves[step - 1];
+    const go = i => { step = Math.max(0, Math.min(n, i)); render(); };
+    const r = roles(), nums = Object.fromEntries((gen.problem.holds || []).filter(h => h.n).map(h => [h.id, h.n]));
+    const where = m && (r[m.hold] === 20 ? 'the finish' : nums[m.hold] ? `hold ${nums[m.hold]}` : m.limb[1] === 'F' ? 'a foothold' : 'a start hold');
+    return el('div', { class: 'stepper' },
+      el('button', { class: 'iconbtn', 'aria-label': 'Previous move', disabled: step === 0, onclick: () => { stop(); go(step - 1); } }, icon('back')),
+      el('div', { class: 'step-label' },
+        el('strong', { text: step ? `Move ${step} of ${n}` : 'Start position' }),
+        el('span', { class: 'muted', text: step ? `${LIMB_NAMES[m.limb]} to ${where}` : 'Hands on the start, feet low' })),
+      el('button', { class: 'iconbtn', 'aria-label': 'Next move', disabled: step === n, onclick: () => { stop(); go(step + 1); } }, icon('next')),
+      el('button', {
+        class: 'iconbtn play', 'aria-label': timer ? 'Pause' : 'Play beta', onclick: () => {
+          if (timer) { stop(); return render(); }
+          if (step === n) step = 0;
+          timer = setInterval(() => {
+            if (!viewer.el.isConnected || step >= n) { stop(); if (viewer.el.isConnected) render(); return; }
+            go(step + 1);
+          }, 900);
+          render();
+        },
+      }, icon(timer ? 'pause' : 'play')),
+      el('button', { class: 'iconbtn', 'aria-label': 'Hide beta', onclick: () => { stop(); showBeta = false; step = 0; render(); } }, icon('x')));
   }
 
   function render() { drawWall(); drawPanel(); }

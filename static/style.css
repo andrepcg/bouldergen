@@ -169,6 +169,23 @@ details[open] summary::after { transform: rotate(-90deg); }
 .hold.sel polygon, .hold.sel circle { stroke: #fff; stroke-width: 4; fill: color-mix(in srgb, var(--c) 45%, transparent); filter: drop-shadow(0 0 12px rgba(255, 255, 255, .7)); }
 .hold text { fill: #fff; font-size: 40px; font-weight: 800; text-anchor: middle; paint-order: stroke; stroke: rgba(0, 0, 0, .8); stroke-width: 8px; pointer-events: none; }
 .ghold polygon, .ghold circle { fill: transparent; stroke: none; }
+.ring-num circle { fill: #0b0d10; stroke: #fff; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.ring-num text { fill: #fff; font-size: 70px; font-weight: 800; text-anchor: middle; }
+.ring-num { pointer-events: none; }
+.grid2.tight { grid-template-columns: 1fr 1fr; }
+.stick line { stroke-linecap: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+.stick line.halo { stroke: rgba(0, 0, 0, .65); stroke-width: 9; }
+.stick line.body, .stick line.limb { stroke: #fff; stroke-width: 5; }
+.stick line.moved { stroke: var(--accent); }
+.stick .head { fill: #fff; stroke: rgba(0, 0, 0, .65); stroke-width: 3; vector-effect: non-scaling-stroke; pointer-events: none; }
+.stick .contact { fill: #fff; stroke: rgba(0, 0, 0, .65); stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
+.stick .contact.moved { fill: var(--accent); }
+.stepper { display: flex; align-items: center; gap: 4px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
+.step-label { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; padding: 0 6px; }
+.step-label span { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.beta-toggle { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 50px; border-radius: 14px;
+  border: 1px dashed var(--line-2); background: transparent; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; }
+.iconbtn.play { background: var(--accent); color: var(--accent-ink); }
 .dim { fill: rgba(5, 6, 8, .62); pointer-events: none; }
 .ring { fill: none; stroke-width: 4.5; pointer-events: none; }
 .ring-halo { fill: none; stroke: rgba(0, 0, 0, .55); stroke-width: 8; pointer-events: none; }

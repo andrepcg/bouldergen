@@ -14,6 +14,7 @@ It runs as one Docker container on a LAN. It is single-user, with no auth.
 app/main.py            FastAPI routes, SQLite storage, static serving
 app/detect.py          photo straightening + OpenCV hold detection
 app/generator.py       BoulderBot port: graph, path planner, hold sequencer, 4 MLPs, penalty, grades
+app/beta.py            "Kinematic" engine: A* over body states (LH, RH, LF, RF), returns explicit beta
 app/test_generator.py  assert-based self-check (runs in CI)
 static/                frontend: index.html, app.js, style.css — vanilla JS, no build step
 boulderbot-research.md reverse-engineering spec the generator follows (§ refs in code point here)
@@ -78,6 +79,32 @@ Two stages:
 **Grade:** the grade is an input, not a measurement. The Difficulty slider maps to a Font/V grade, shifted by the angle table `R72`. The client mirrors this in `gradeLabel()` using `/api/meta`.
 
 Any change to the generator must keep `python -m app.test_generator` passing.
+
+## Kinematic engine (app/beta.py)
+
+You pick the engine with `settings.engine` (`'boulderbot'` is the default, or `'kinematic'`), dispatched in `main.generate`. Both engines return the same shape. Kinematic also returns `beta: {start, moves}`, and hand holds carry `n`, their reach order.
+
+**State:** `(LH, RH, LF, RF)` hold indices, in metres, with y measured up from the floor.
+
+**Moves:** compound. Feet adjust first (at most two), then one hand reaches. Every intermediate pose must be legal.
+
+**`legal()` checks, body only:**
+- feet stay below hands
+- the hands aren't compressed too close to the feet
+- no crossed feet
+- the hip can reach both feet and the shoulders both hands (`pose()` runs a 3×3 hip search)
+- no barn door: the centre of mass sits within the contacts sideways
+- every hand pulls in its hold's direction
+
+**`Search.ok()` adds the per-problem comfort limits:**
+- maximum hand gap
+- maximum sideways lean between the hands' midpoint and the feet's midpoint
+
+**Per-move limits:** a hard `max_move` and a preferred `pref` hand move, both scaling with difficulty and span. Stretching past `pref` costs extra.
+
+**Starts are low.** Sit or crouch start: hands at 0.3–0.62 × climber height above the lowest feet, with the feet on the lowest footholds under the hands.
+
+The self-check replays every kinematic beta through `legal()`. A user report ("V0" with a 1.4 m diagonal stretch from a lean) is what set the gap and lean limits. Tune those numbers against real climbing, not just the tests.
 
 ## Detection (app/detect.py)
 
