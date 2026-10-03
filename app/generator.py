@@ -207,12 +207,14 @@ def plan_path(nodes, adj, s, rnd):
             return None
         low = region(ns)
         exp = set()
-        for st in low:
-            for lo_, hi_ in ((700, 1350), (600, 1600), (500, 2000)):
-                found = {e for e, c in adj[st].items() if lo_ <= c <= hi_ and not nodes[e].qc}
-                if len(found) >= 3:
-                    break
-            exp |= found
+        # Sit start: those bands come out empty in BoulderBot, so the bottom 500 mm fallback is the start.
+        if not s.get('sit'):
+            for st in low:
+                for lo_, hi_ in ((700, 1350), (600, 1600), (500, 2000)):
+                    found = {e for e, c in adj[st].items() if lo_ <= c <= hi_ and not nodes[e].qc}
+                    if len(found) >= 3:
+                        break
+                exp |= found
         if len(exp) > 3:
             starts = exp
         else:
@@ -709,7 +711,7 @@ def resample(path, d, S, rnd):  # §6.3
 
 def generate(holds, wall, settings, seed=None):
     """holds: [{id, x, y, difficulty, type, direction, kind?}] in mm. wall: {height, kicker, ref_angle}.
-    settings: {difficulty, length, span, feet, circuit, traverse, types, forced{id: role}, angle}.
+    settings: {difficulty, length, span, feet, circuit, traverse, sit, types, forced{id: role}, angle}.
     -> {holds: [{id, role}], grade, penalty}"""
     rnd = random.Random(seed)
     holds = [h for h in holds if h.get('kind', 'hold') == 'hold']
@@ -724,7 +726,8 @@ def generate(holds, wall, settings, seed=None):
     ids = {h['id'] for h in holds}
     forced = {k: v for k, v in forced.items() if k in ids}
     s = {'forced': forced, 'target_diff': GRADES[grade_index(d)][3], 'circuit': circuit,
-         'traverse': bool(settings.get('traverse')), 'length': clamp(settings.get('length', .5)),
+         'traverse': bool(settings.get('traverse')), 'sit': bool(settings.get('sit')),
+         'length': clamp(settings.get('length', .5)),
          'variation': clamp(settings.get('variation', 0), 0, .5)}
 
     nodes, adj = build_graph(holds, wall, angle)

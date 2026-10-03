@@ -4,7 +4,7 @@ import random
 import time
 
 from app import beta
-from app.generator import generate, run_net
+from app.generator import build_graph, generate, plan_path, run_net
 
 
 def synthetic_wall(seed=1):
@@ -53,8 +53,29 @@ def main():
     assert any(h['role'] == 30 for h in circ['holds'])
     trav = generate(holds, wall, {'difficulty': .4, 'traverse': True, 'length': .8}, seed=4)
     assert trav['holds']
+    check_sit()
     check_kinematic(holds, wall)
     print(f'ok: {n} problems in {time.monotonic() - t0:.1f}s, e.g. {r["grade"]}, {len(r["holds"])} holds, penalty {r["penalty"]}')
+
+
+def check_sit():
+    """Sit start skips the standing-reach bands, so the path begins within 500 mm of the bottom."""
+    wall = {'height': 4200, 'kicker': 0, 'ref_angle': 90}
+    # Bottoms are under 700 mm apart, so a standing start reaches the row 850 mm up. Later rows are 800 mm
+    # apart, inside the walk's 500–1000 mm step, so the line can keep climbing.
+    H = 4200
+    rows = [100, 950, 1750, 2550, 3350, 4150]
+    holds = [{'id': f'b{i}', 'x': x, 'y': H - 100, 'difficulty': 64, 'type': 2, 'direction': 1}
+             for i, x in enumerate((500, 650))]
+    holds += [{'id': f'h{i}', 'x': x, 'y': H - s, 'difficulty': 64, 'type': 2, 'direction': 1}
+              for i, (x, s) in enumerate((x, s) for s in rows[1:] for x in (400, 550, 700, 850))]
+    nodes, adj = build_graph(holds, wall, 90)
+    base = {'forced': {}, 'target_diff': .5, 'circuit': False, 'traverse': False, 'length': .5, 'variation': 0}
+    stand = plan_path(nodes, adj, {**base, 'sit': False}, random.Random(0))
+    sat = plan_path(nodes, adj, {**base, 'sit': True}, random.Random(0))
+    low = min(n.y for n in nodes.values())
+    assert stand and nodes[stand[0]].y > low + 500
+    assert sat and nodes[sat[0]].y <= low + 500
 
 
 def check_kinematic(holds, wall):

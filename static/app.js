@@ -637,7 +637,7 @@ function viewGenerate() {
   app.className = 'stage';
   const holds = byId();
   const key = `settings:${wall.id}`;
-  const s = Object.assign({ difficulty: .3, length: .5, span: .5, feet: 'follow', style: 'boulder', types: [], angle: wall.ref_angle,
+  const s = Object.assign({ difficulty: .3, length: .5, span: .5, feet: 'follow', style: 'boulder', sit: false, types: [], angle: wall.ref_angle,
     engine: 'boulderbot', climber_height: 175, ape_index: 0 }, store(key) || {});
   s.angle = Math.min(Math.max(s.angle, wall.min_angle), wall.max_angle);
   let picking = null, showOptions = false, busy = false, step = 0, timer = null;
@@ -743,7 +743,11 @@ function viewGenerate() {
         el('div', { class: 'grid2' }, slider('length', 'Length', 0, 1, .01, words), slider('span', kinematic ? 'Move size' : 'Reach between holds', 0, 1, .01, words)),
         wall.max_angle > wall.min_angle && slider('angle', 'Wall angle', wall.min_angle, wall.max_angle, 5, v => `${v - 90}°`),
         el('div', { class: 'group' }, el('label', { text: 'Style' }),
-          seg(STYLES.filter(st => !kinematic || st[0] !== 'circuit'), s.style, v => { s.style = v; store(key, s); drawPanel(); })),
+          seg(STYLES.filter(st => !kinematic || st[0] !== 'circuit'), s.style, v => { s.style = v; store(key, s); drawPanel(); }),
+          !kinematic && el('button', {
+            class: `chip${s.sit ? ' on' : ''}`, text: 'Sit start',
+            onclick: () => { s.sit = !s.sit; store(key, s); drawPanel(); },
+          })),
         el('div', { class: 'group' }, el('label', { text: 'Feet' }), seg(FEET.map(f => [f[0], f[1]]), s.feet, v => { s.feet = v; store(key, s); drawPanel(); }),
           el('p', { class: 'hint', text: feet[2] })),
         el('div', { class: 'group' }, el('label', { text: 'Only these hold types (optional)' }),
