@@ -104,17 +104,42 @@ def delete_wall(wall_id: str):
 
 
 @app.post('/api/walls/{wall_id}/rectify')
-def rectify_wall(wall_id: str):
-    """Straighten the photo using the stored corners and dimensions, then detect holds."""
+def rectify_wall(wall_id: str, body: dict = Body(default={})):
+    """Apply new corners/dimensions and straighten the photo. Existing holds are moved to match; a new wall gets detection."""
     wall = get_wall(wall_id)
-    img = cv2.imread(str(IMAGES / wall_id / 'photo.jpg'))
-    c = wall['corners']
-    rect = detect.rectify(img, c['main'], c.get('kicker'), wall['width'], wall['height'], wall['kicker'])
-    cv2.imwrite(str(IMAGES / wall_id / 'rect.jpg'), rect, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    wall['rect'] = f'/images/{wall_id}/rect.jpg?v={int(time.time())}'
-    if not wall['kicker'] or not c.get('kicker'):
+    geom = lambda w: (w['corners'], w['width'], w['height'], w['kicker'])
+    old = geom(wall)
+    wall.update({k: v for k, v in body.items() if k in WALL_FIELDS})
+    if not wall['kicker'] or not wall['corners'].get('kicker'):
         wall['kicker'] = 0
-    return run_detect(wall, wall.get('detect_params') or {}, rect)
+    img = cv2.imread(str(IMAGES / wall_id / 'photo.jpg'))
+    rect = detect.rectify(img, *geom(wall))
+    wall['rect'] = f'/images/{wall_id}/rect.jpg?v={int(time.time())}'
+    if not wall['holds']:
+        cv2.imwrite(str(IMAGES / wall_id / 'rect.jpg'), rect, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        return run_detect(wall, wall.get('detect_params') or {}, rect)
+    move = detect.mover(old, geom(wall))
+    wall['holds'] = detect.remap(wall['holds'], move)
+    problems = [json.loads(r[0]) for r in db.execute('SELECT data FROM problems WHERE wall_id = ?', (wall_id,))]
+    for p in problems:  # the stick figure's skeleton is in wall mm too
+        for pose in filter(None, (p.get('beta') or {}).get('poses') or []):
+            for k in ('com', 'hip', 'shoulder'):
+                q = move([pose[k]], pose[k][1])
+                if q is not None:
+                    pose[k] = [round(q[0][0]), round(q[0][1])]
+    # all or nothing: the image, holds and problems must agree
+    tmp = IMAGES / wall_id / 'rect.tmp.jpg'
+    cv2.imwrite(str(tmp), rect, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    db.execute('BEGIN')
+    try:
+        save_wall(wall)
+        db.executemany('UPDATE problems SET data = ? WHERE id = ?', [(json.dumps(p), p['id']) for p in problems])
+        os.replace(tmp, IMAGES / wall_id / 'rect.jpg')
+        db.execute('COMMIT')
+    except BaseException:
+        db.execute('ROLLBACK')
+        raise
+    return wall
 
 
 @app.post('/api/walls/{wall_id}/detect')

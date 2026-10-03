@@ -21,16 +21,51 @@ def load_image(path, max_side=4000):
     return cv2.cvtColor(np.asarray(im), cv2.COLOR_RGB2BGR)
 
 
-def rectify(img, main_corners, kicker_corners, width, height, kicker):
-    """corners: [[x,y] TL, TR, BR, BL] in image px. -> straight-on image width x (height+kicker), 1 px = 1 mm."""
-    def warp(corners, h):
-        dst = np.float32([[0, 0], [width, 0], [width, h], [0, h]])
-        m = cv2.getPerspectiveTransform(np.float32(corners), dst)
-        return cv2.warpPerspective(img, m, (int(width), int(h)), flags=cv2.INTER_AREA)
-    parts = [warp(main_corners, height)]
-    if kicker and kicker_corners:
-        parts.append(warp(kicker_corners, kicker))
-    return np.vstack(parts)
+def transforms(corners, width, height, kicker):
+    """corners: {'main', 'kicker'}: [[x,y] TL, TR, BR, BL] in image px. -> {part: (photo -> part matrix, part height, y offset)}."""
+    parts = {'main': (corners['main'], height, 0)}
+    if kicker and corners.get('kicker'):
+        parts['kicker'] = (corners['kicker'], kicker, height)
+    return {k: (cv2.getPerspectiveTransform(np.float32(c), np.float32([[0, 0], [width, 0], [width, h], [0, h]])), h, y0)
+            for k, (c, h, y0) in parts.items()}
+
+
+def rectify(img, corners, width, height, kicker):
+    """-> straight-on image width x (height+kicker), 1 px = 1 mm: the main panel with the kicker stacked below."""
+    return np.vstack([cv2.warpPerspective(img, m, (int(width), int(h)), flags=cv2.INTER_AREA)
+                      for m, h, _ in transforms(corners, width, height, kicker).values()])
+
+
+def mover(old, new):
+    """Re-straightening (new dimensions or corners) -> move(points, y): points on the old image to the same spot of the
+    photo on the new one. y picks the part (panel or kicker); None if that part is gone. old/new: (corners, width, height, kicker)."""
+    a, b = transforms(*old), transforms(*new)
+    shift = lambda dy: np.array([[1, 0, 0], [0, 1, dy], [0, 0, 1]], np.float64)
+    ms = {k: shift(b[k][2]) @ b[k][0] @ np.linalg.inv(a[k][0]) @ shift(-a[k][2]) for k in a if k in b}
+
+    def move(pts, y):
+        m = ms.get('kicker' if 'kicker' in a and y > old[2] else 'main')
+        return None if m is None else cv2.perspectiveTransform(np.float64(pts).reshape(-1, 1, 2), m).reshape(-1, 2)
+    return move
+
+
+def remap(holds, move):
+    """Move holds so their edits survive a re-straighten. Kicker holds are dropped if the kicker goes."""
+    out = []
+    for h in holds:
+        y0 = h['y']
+        pts = move([[h['x'], y0], [h['x'] + 1, y0], [h['x'], y0 + 1]], y0)
+        if pts is None:
+            continue
+        (x, y), dx, dy = pts
+        s = abs(np.linalg.det([dx - (x, y), dy - (x, y)]))  # local area scale
+        h = {**h, 'x': round(x), 'y': round(y), 'r': round(h['r'] * s ** .5)}
+        if 'area' in h:
+            h['area'] = round(h['area'] * s)
+        if h.get('poly'):
+            h['poly'] = np.rint(move(h['poly'], y0)).astype(int).tolist()
+        out.append(h)
+    return out
 
 
 def detect(rect, height, params=None):
@@ -115,7 +150,7 @@ if __name__ == '__main__':
     pts = [float(v) for v in sys.argv[2].split(',')]
     pts = [[pts[i] * iw, pts[i + 1] * ih] for i in range(0, 16, 2)]
     W, H, K = (int(v) for v in sys.argv[3:6])
-    rect = rectify(img, pts[:4], pts[4:], W, H, K)
+    rect = rectify(img, {'main': pts[:4], 'kicker': pts[4:]}, W, H, K)
     holds = detect(rect, H)
     out = rect.copy()
     for hd in holds:

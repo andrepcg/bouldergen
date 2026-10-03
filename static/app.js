@@ -449,15 +449,16 @@ function viewSetup() {
   async function straighten() {
     const f = Object.fromEntries(new FormData(form)), n = k => Number(f[k]);
     if (!n('width') || !n('height')) return toast('Enter the wall width and panel length');
-    if (wall.holds.length && !await dialog({ title: 'Re-straighten photo?', message: 'Holds are detected again from scratch, so your hold edits will be replaced.', ok: 'Re-straighten', danger: true })) return;
+    const lost = n('kicker') ? 0 : wall.holds.filter(h => h.y > wall.height).length;
+    if (lost && !await dialog({ title: 'Remove the kicker?', message: `Its ${lost} holds will be deleted, and saved problems that use them will be missing holds.`, ok: 'Remove', danger: true })) return;
     const body = { name: f.name || wall.name, width: n('width'), height: n('height'), kicker: n('kicker'), corners: { main: corners.main },
       ref_angle: 90 + n('ref'), min_angle: 90 + Math.min(n('min'), n('max')), max_angle: 90 + Math.max(n('min'), n('max')) };
     if (body.kicker) body.corners.kicker = corners.kicker;
     btn.disabled = true; btn.textContent = 'Straightening…';
     try {
-      await api('PUT', `/api/walls/${wall.id}`, body);
-      wall = await api('POST', `/api/walls/${wall.id}/rectify`);
-      toast(`Found ${wall.holds.length} holds`);
+      const had = wall.holds.length;
+      wall = await api('POST', `/api/walls/${wall.id}/rectify`, body);
+      toast(had ? 'Holds moved to match' : `Found ${wall.holds.length} holds`);
       location.hash = `#/wall/${wall.id}/holds`;
     } finally { btn.disabled = false; btn.textContent = label; }
   }

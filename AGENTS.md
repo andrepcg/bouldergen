@@ -139,7 +139,7 @@ Tuned on a black-painted wall with coloured PU holds:
 
 On the reference photo, detection found 71/71 upper holds, 3/3 on the volume, and 8/10 kicker feet. The misses are faint grey or black holds, and the user adds those by tap. Thresholds live in `DEFAULTS` and are exposed as sliders under Setup → Detection sensitivity.
 
-Re-straightening or re-detecting **replaces all hold edits**. The UI confirms first.
+Re-straightening (new corners or dimensions, e.g. kicker height) **keeps hold edits**: `remap` moves each hold through the photo onto the new image, and kicker holds are dropped if the kicker goes. Re-detecting **replaces all hold edits**. The UI confirms first.
 
 ## Frontend (static/app.js)
 

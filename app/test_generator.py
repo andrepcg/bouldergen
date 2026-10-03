@@ -56,6 +56,7 @@ def main():
     check_sit()
     check_kinematic(holds, wall)
     check_names()
+    check_remap()
     print(f'ok: {n} problems in {time.monotonic() - t0:.1f}s, e.g. {r["grade"]}, {len(r["holds"])} holds, penalty {r["penalty"]}')
 
 
@@ -90,6 +91,23 @@ def check_names():
     made = [names.generate(rnd=rnd) for _ in range(500)]
     assert all(0 < len(n) <= 24 for n in made), made
     assert names.generate(set(made), random.Random(0)) not in made
+
+
+def check_remap():
+    """Changing the kicker height re-straightens without losing holds: panel holds stay put, kicker holds stretch."""
+    from app.detect import mover, remap
+    corners = {'main': [[0, 0], [1000, 0], [1000, 2000], [0, 2000]], 'kicker': [[0, 2000], [1000, 2000], [1000, 2300], [0, 2300]]}
+    holds = [{'id': 'a', 'x': 500, 'y': 1000, 'r': 40, 'area': 5000, 'poly': [[480, 980], [520, 1020]]},
+             {'id': 'k', 'x': 500, 'y': 2150, 'r': 40}]
+    a, k = remap(holds, mover((corners, 1000, 2000, 300), (corners, 1000, 2000, 600)))
+    assert (a['x'], a['y'], a['r'], a['area'], a['poly']) == (500, 1000, 40, 5000, [[480, 980], [520, 1020]])
+    assert (k['x'], k['y'], k['r']) == (500, 2300, 57)  # halfway down a doubled kicker; r scales by sqrt(area)
+    assert [h['id'] for h in remap(holds, mover((corners, 1000, 2000, 300), (corners, 1000, 2000, 0)))] == ['a']
+    # changing a setting and changing it back is lossless
+    skew = {**corners, 'main': [[30, 10], [990, 0], [1000, 2000], [0, 1990]]}
+    there = (skew, 1200, 2100, 450)
+    back = remap(remap(holds, mover((corners, 1000, 2000, 300), there)), mover(there, (corners, 1000, 2000, 300)))
+    assert [(h['x'], h['y']) for h in back] == [(h['x'], h['y']) for h in holds], back
 
 
 def check_kinematic(holds, wall):
