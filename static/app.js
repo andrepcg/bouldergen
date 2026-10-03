@@ -695,7 +695,7 @@ function viewGenerate() {
 
   async function saveProblem() {
     if (!gen.problem?.holds.length) return toast('Generate a problem first');
-    const name = await dialog({ title: 'Save problem', input: '', ok: 'Save' });
+    const name = await dialog({ title: 'Save problem', input: gen.problem.name || '', ok: 'Save' });
     if (name == null) return;
     await api('POST', `/api/walls/${wall.id}/problems`, { ...gen.problem, name: name || gen.problem.grade || 'Problem' });
     toast('Saved to your problems');

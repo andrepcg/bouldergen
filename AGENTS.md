@@ -15,6 +15,7 @@ app/main.py            FastAPI routes, SQLite storage, static serving
 app/detect.py          photo straightening + OpenCV hold detection
 app/generator.py       BoulderBot port: graph, path planner, hold sequencer, 4 MLPs, penalty, grades
 app/beta.py            "Kinematic" engine: A* over body states (LH, RH, LF, RF), returns explicit beta
+app/names.py           problem names: BoulderBot's weighted templates + word lists (names.json), suffix-rule plurals
 app/test_generator.py  assert-based self-check (runs in CI)
 static/                frontend: index.html, app.js, style.css — vanilla JS, no build step
 boulderbot-research.md reverse-engineering spec the generator follows (§ refs in code point here)

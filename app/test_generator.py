@@ -3,7 +3,7 @@ import math
 import random
 import time
 
-from app import beta
+from app import beta, names
 from app.generator import build_graph, generate, plan_path, run_net
 
 
@@ -55,6 +55,7 @@ def main():
     assert trav['holds']
     check_sit()
     check_kinematic(holds, wall)
+    check_names()
     print(f'ok: {n} problems in {time.monotonic() - t0:.1f}s, e.g. {r["grade"]}, {len(r["holds"])} holds, penalty {r["penalty"]}')
 
 
@@ -76,6 +77,19 @@ def check_sit():
     low = min(n.y for n in nodes.values())
     assert stand and nodes[stand[0]].y > low + 500
     assert sat and nodes[sat[0]].y <= low + 500
+
+
+def check_names():
+    """BoulderBot's suffix rules (quirks kept), template syntax, and the 24-character cap."""
+    assert [names._animals(w) for w in ('Wolf', 'Mouse', 'Sheep', 'Monkey', 'Fly')] == ['Wolves', 'Mice', 'Sheep', 'Monkeys', 'Flies']
+    assert [names._jobs(w) for w in ('midwife', 'fireman', 'secretary')] == ['midwifes', 'firemen', 'secretaries']
+    assert [names._ing(w) for w in ('Boulder', 'Run', 'Dance', 'Jog')] == ['Bouldering', 'Running', 'Dancing', 'Jogging']
+    assert names.parse('#Jobs from (#city|3:x)') == [('jobs', True), ' from ', [([('city', False)], 1), (['x'], 3)]]
+    assert names.expand(names.parse('#animal and #Animal'), random.Random(0), {}).split(' and ')[0][0].islower()
+    rnd = random.Random(0)
+    made = [names.generate(rnd=rnd) for _ in range(500)]
+    assert all(0 < len(n) <= 24 for n in made), made
+    assert names.generate(set(made), random.Random(0)) not in made
 
 
 def check_kinematic(holds, wall):

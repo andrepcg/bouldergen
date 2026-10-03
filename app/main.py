@@ -10,7 +10,7 @@ import cv2
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 
-from app import beta, detect, generator
+from app import beta, detect, generator, names
 
 DATA = Path(os.environ.get('DATA_DIR', 'data'))
 IMAGES = DATA / 'images'
@@ -137,9 +137,12 @@ def generate(wall_id: str, settings: dict = Body(default={})):
     wall = get_wall(wall_id)
     try:
         engine = beta if settings.get('engine') == 'kinematic' else generator
-        return engine.generate(wall['holds'], wall, settings)
+        problem = engine.generate(wall['holds'], wall, settings)
     except ValueError as e:
         raise HTTPException(422, str(e))
+    taken = {json.loads(r[0])['name'] for r in db.execute('SELECT data FROM problems WHERE wall_id = ?', (wall_id,))}
+    problem['name'] = names.generate(taken)
+    return problem
 
 
 @app.get('/api/walls/{wall_id}/problems')
