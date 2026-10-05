@@ -78,6 +78,11 @@ def check_sit():
     low = min(n.y for n in nodes.values())
     assert stand and nodes[stand[0]].y > low + 500
     assert sat and nodes[sat[0]].y <= low + 500
+    # End to end, with kicker feet below: the sequencer's .75 m standing-start floor used to veto the low row.
+    holds += [{'id': f'f{i}', 'x': x, 'y': H, 'difficulty': 200, 'type': 2, 'direction': 1} for i, x in enumerate((450, 750))]
+    low_starts = lambda sit: sum(any(h['role'] == 10 and h['id'][0] == 'b' for h in generate(
+        holds, wall, {'difficulty': .3, 'sit': sit}, seed=i)['holds']) for i in range(10))
+    assert low_starts(True) >= 7
 
 
 def check_names():

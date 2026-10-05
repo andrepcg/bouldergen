@@ -397,7 +397,7 @@ class Sequencer:
     def __init__(self, ps, s, rnd):
         self.ps, self.rnd = ps, rnd
         self.d, self.S, self.circuit = s['d'], s['span'], s['circuit']
-        self.feet, self.type_sum = s['feet_mode'], s['type_sum']
+        self.feet, self.type_sum, self.sit = s['feet_mode'], s['type_sum'], s.get('sit')
         self.set_feet = self.feet == 2
 
     # state
@@ -497,7 +497,8 @@ class Sequencer:
             return 1e-6
         if sfp and len(self.with_role(50)) == 1 and any(dl < .5 for _, _, dl in feet):
             return 1e-6
-        if (role == 10 and not self.chosen and c.y < .75) or (role == 40 and c.y < 1.0):
+        # BoulderBot's standing start: first start hold >= .75 m above the lowest hold. Sit start skips it.
+        if (role == 10 and not self.chosen and c.y < .75 and not self.sit) or (role == 40 and c.y < 1.0):
             return 1e-5
         if sfp and any(r == 10 and dl < .75 for _, r, dl in N):
             return 1e-4
@@ -762,7 +763,8 @@ def generate(holds, wall, settings, seed=None):
 
     feet_mode = FEET_MODES.get(settings.get('feet', 'follow'), 0)
     type_sum = sum(int(t) for t in settings.get('types') or [])
-    seq = Sequencer(ps, {'d': d, 'span': S, 'circuit': circuit, 'feet_mode': feet_mode, 'type_sum': type_sum}, rnd)
+    seq = Sequencer(ps, {'d': d, 'span': S, 'circuit': circuit, 'feet_mode': feet_mode, 'type_sum': type_sum,
+                         'sit': s['sit']}, rnd)
     pts = resample([by_id[k] for k in path], d, S, rnd)
     best = None
     for _ in range(5):  # §6.4
