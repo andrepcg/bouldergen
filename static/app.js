@@ -110,18 +110,20 @@ function store(key, val) {
 }
 
 // Modal dialog. Resolves to the input value (or true without input), or null when cancelled.
-function dialog({ title, message, input, ok = 'OK', danger = false }) {
+// With `alt`, a second button also resolves; the dialog's returnValue is then 'alt'.
+function dialog({ title, message, input, ok = 'OK', alt, danger = false }) {
   const dlg = document.getElementById('dlg');
   const field = input != null ? el('input', { value: input, placeholder: 'Name', maxlength: 80 }) : null;
   put(dlg, el('form', { method: 'dialog', class: 'stack' },
     el('h3', { text: title }), message && el('p', { class: 'muted', text: message }), field,
     el('div', { class: 'row end' },
       el('button', { type: 'button', class: 'btn ghost', text: 'Cancel', onclick: () => dlg.close('cancel') }),
+      alt && el('button', { value: 'alt', class: 'btn', text: alt }),
       el('button', { value: 'ok', class: `btn ${danger ? 'danger' : 'primary'}`, text: ok }))));
   dlg.showModal();
   if (field) field.select();
   return new Promise(res => dlg.addEventListener('close', () =>
-    res(dlg.returnValue === 'ok' ? (field ? field.value : true) : null), { once: true }));
+    res(['ok', 'alt'].includes(dlg.returnValue) ? (field ? field.value : true) : null), { once: true }));
 }
 
 const groupOf = c => DIFF_GROUPS.find(g => g.codes.includes(c)) || DIFF_GROUPS[1];
@@ -678,6 +680,7 @@ function viewGenerate() {
   function setRole(id, role) {
     gen.problem = gen.problem || { holds: [], grade: gradeLabel(s.difficulty, s.angle), angle: s.angle };
     gen.problem.holds = gen.problem.holds.filter(h => h.id !== id);
+    if (gen.problem.beta) { gen.problem.beta = null; showBeta = false; stop(); } // it climbed the old holds
     if (role) { gen.problem.holds.push({ id, role }); gen.forced[id] = role; } else delete gen.forced[id];
     picking = null; render();
   }
@@ -696,10 +699,14 @@ function viewGenerate() {
 
   async function saveProblem() {
     if (!gen.problem?.holds.length) return toast('Generate a problem first');
-    const name = await dialog({ title: 'Save problem', input: gen.problem.name || '', ok: 'Save' });
+    const saved = gen.problem.id;
+    const name = await dialog(saved ? { title: 'Update problem', input: gen.problem.name, ok: 'Update', alt: 'Save as new' }
+      : { title: 'Save problem', input: gen.problem.name || '', ok: 'Save' });
     if (name == null) return;
-    await api('POST', `/api/walls/${wall.id}/problems`, { ...gen.problem, name: name || gen.problem.grade || 'Problem' });
-    toast('Saved to your problems');
+    const body = { ...gen.problem, name: name || gen.problem.grade || 'Problem' };
+    const update = saved && document.getElementById('dlg').returnValue === 'ok';
+    Object.assign(gen.problem, await (update ? api('PUT', `/api/problems/${saved}`, body) : api('POST', `/api/walls/${wall.id}/problems`, body)));
+    toast(update ? 'Problem updated' : 'Saved to your problems');
   }
 
   const slider = (k, label, min, max, step, fmt) => {

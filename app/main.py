@@ -176,19 +176,33 @@ def list_problems(wall_id: str):
     return sorted((json.loads(r[0]) for r in rows), key=lambda p: -p['created'])
 
 
+def problem_fields(body):
+    """The parts of a problem the client may set, on save and on update."""
+    if not body.get('holds'):
+        raise HTTPException(400, 'Problem has no holds')
+    return {'name': str(body.get('name') or 'Untitled')[:80], 'grade': body.get('grade'),
+            'grade_index': body.get('grade_index'), 'angle': body.get('angle'),
+            'holds': [{'id': str(h['id']), 'role': int(h['role']), **({'n': int(h['n'])} if h.get('n') else {})}
+                      for h in body['holds']],
+            'engine': body.get('engine', 'boulderbot'), 'beta': body.get('beta')}
+
+
 @app.post('/api/walls/{wall_id}/problems')
 def save_problem(wall_id: str, body: dict = Body(...)):
     get_wall(wall_id)
-    if not body.get('holds'):
-        raise HTTPException(400, 'Problem has no holds')
-    problem = {'id': uuid.uuid4().hex[:10], 'wall_id': wall_id, 'created': time.time(),
-               'name': str(body.get('name') or 'Untitled')[:80], 'grade': body.get('grade'),
-               'grade_index': body.get('grade_index'), 'angle': body.get('angle'),
-               'holds': [{'id': str(h['id']), 'role': int(h['role']), **({'n': int(h['n'])} if h.get('n') else {})}
-                         for h in body['holds']],
-               'engine': body.get('engine', 'boulderbot'), 'beta': body.get('beta')}
+    problem = {'id': uuid.uuid4().hex[:10], 'wall_id': wall_id, 'created': time.time(), **problem_fields(body)}
     db.execute('INSERT INTO problems (id, wall_id, data) VALUES (?, ?, ?)',
                (problem['id'], wall_id, json.dumps(problem)))
+    return problem
+
+
+@app.put('/api/problems/{problem_id}')
+def update_problem(problem_id: str, body: dict = Body(...)):
+    row = db.execute('SELECT data FROM problems WHERE id = ?', (problem_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, 'Problem not found')
+    problem = {**json.loads(row[0]), **problem_fields(body)}
+    db.execute('UPDATE problems SET data = ? WHERE id = ?', (json.dumps(problem), problem_id))
     return problem
 
 
